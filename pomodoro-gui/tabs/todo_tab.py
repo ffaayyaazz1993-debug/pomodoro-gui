@@ -306,7 +306,7 @@ class TodoTab(ttk.Frame):
             for sub in subs:
                 self._build_subtask_row(tid, sub, subs_frame)
 
-        if todo.get('category', '').strip().lower() == 'quran':
+        if self._detect_quran_related(todo):
             self._build_quran_meta(card, tid, todo)
 
         extra = todo.get('extra_input', {})
@@ -568,6 +568,17 @@ class TodoTab(ttk.Frame):
                 if t['id'] == tid:
                     t['surah'] = val
         save(data)
+
+    def _detect_quran_related(self, todo):
+        cat = (todo.get('category') or '').strip().lower()
+        if cat == 'quran':
+            return True
+        text = (todo.get('desc') or '').lower()
+        keywords = ('quran', 'surah', 'sura', 'ayat', 'ayah', 'falak', 'tauhid', 'tafseer',
+                    'tafsir', 'hifz', 'huffaz', 'mufti', 'imam', 'mosque', 'masjid', 'dua',
+                    'zakat', 'ramadan', 'roza', 'salah', 'namaz', 'wudu', 'kalima', 'allah',
+                    'muhammad', 'islam', 'muslim')
+        return any(kw in text for kw in keywords)
 
     # Quran surah -> ayat count (Kufan count, 6236 total)
     SURAH_AYAT = {
