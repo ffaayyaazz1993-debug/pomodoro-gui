@@ -49,7 +49,7 @@ class TodoTab(ttk.Frame):
         self.todo_cat.pack(side='left', padx=2)
         self.todo_cat.set('')
         self.todo_cat.bind('<<ComboboxSelected>>', lambda e: self.refresh())
-        ttk.Button(top, text='+', style='Primary.TButton',
+        ttk.Button(top, text='+ Cat', style='Card.TButton',
                     command=self._add_category).pack(side='left', padx=2)
         ttk.Button(top, text='+ Add', command=self._todo_add,
                     style='Primary.TButton').pack(side='left', padx=(4, 8))
