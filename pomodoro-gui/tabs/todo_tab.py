@@ -306,6 +306,8 @@ class TodoTab(ttk.Frame):
             for sub in subs:
                 self._build_subtask_row(tid, sub, subs_frame)
 
+        self._build_quran_meta(card, tid, todo)
+
         extra = todo.get('extra_input', {})
         if extra.get('type') or extra.get('value') or extra.get('options'):
             self._build_extra_input(card, tid, extra)
@@ -507,6 +509,108 @@ class TodoTab(ttk.Frame):
                 break
         save(data)
         self.refresh()
+
+    def _save_notes(self, tid, text_widget):
+        val = text_widget.get('1.0', 'end-1c')
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    t['notes'] = val
+                    save(data)
+                    return
+
+    def _build_quran_meta(self, card, tid, todo):
+        """Surah + Ayat + Notes grouped as a Quran metadata section in the task card."""
+        surah_frame = ttk.Frame(card)
+        surah_frame.pack(fill='x', pady=(2, 0))
+        ttk.Label(surah_frame, text='Surah:').pack(side='left', padx=(0, 4))
+        surah_var = tk.StringVar(value=str(todo.get('surah', '')))
+        surah_cb = ttk.Combobox(surah_frame, textvariable=surah_var,
+                                 values=[str(i) for i in range(1, 115)],
+                                 width=5, state='readonly')
+        surah_cb.pack(side='left', padx=2)
+
+        ayat_frame = ttk.Frame(card)
+        ayat_frame.pack(fill='x', pady=(2, 0))
+        ttk.Label(ayat_frame, text='Ayat:').pack(side='left', padx=(0, 4))
+        ayat_var = tk.StringVar(value=str(todo.get('ayat', '')))
+        ayat_cb = ttk.Combobox(ayat_frame, textvariable=ayat_var,
+                                values=[str(i) for i in range(1, self._surah_ayat_count(int(surah_var.get() or 1)) + 1)],
+                                width=5, state='readonly')
+        ayat_cb.pack(side='left', padx=2)
+
+        # both widgets exist now — bind after
+        surah_cb.bind('<<ComboboxSelected>>',
+                       lambda e: self._on_surah_changed(tid, surah_var, ayat_cb))
+        ayat_cb.bind('<<ComboboxSelected>>',
+                      lambda e: self._save_ayat(tid, ayat_var.get()))
+        card.value['surah_var'] = surah_var
+        card.value['surah_cb'] = surah_cb
+        card.value['ayat_var'] = ayat_var
+        card.value['ayat_cb'] = ayat_cb
+
+        notes_frame = ttk.Frame(card)
+        notes_frame.pack(fill='x', pady=(2, 0))
+        notes_text = tk.Text(notes_frame, height=2, width=40,
+                             font=('SF Pro Text', 9),
+                             bg='#f5f5f5', borderwidth=1, relief='solid',
+                             padx=4, pady=2)
+        notes_text.pack(fill='x', expand=True)
+        notes_text.insert('1.0', todo.get('notes', '') or '')
+        notes_text.bind('<FocusOut>', lambda e: self._save_notes(tid, notes_text))
+        card.value['notes_text'] = notes_text
+
+    def _save_surah(self, tid, val):
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    t['surah'] = val
+        save(data)
+
+    # Quran surah -> ayat count (Kufan count, 6236 total)
+    SURAH_AYAT = {
+        1: 7, 2: 286, 3: 200, 4: 176, 5: 120, 6: 165, 7: 206, 8: 75, 9: 129, 10: 109,
+        11: 123, 12: 111, 13: 43, 14: 52, 15: 99, 16: 128, 17: 111, 18: 110, 19: 98, 20: 135,
+        21: 112, 22: 78, 23: 118, 24: 64, 25: 77, 26: 227, 27: 93, 28: 88, 29: 69, 30: 60,
+        31: 34, 32: 30, 33: 73, 34: 54, 35: 45, 36: 83, 37: 182, 38: 88, 39: 75, 40: 85,
+        41: 54, 42: 53, 43: 89, 44: 59, 45: 59, 46: 35, 47: 38, 48: 29, 49: 14, 50: 45,
+        51: 60, 52: 49, 53: 62, 54: 55, 55: 78, 56: 96, 57: 29, 58: 22, 59: 24, 60: 13,
+        61: 14, 62: 11, 63: 6, 64: 18, 65: 12, 66: 12, 67: 30, 68: 52, 69: 52, 70: 44,
+        71: 28, 72: 28, 73: 20, 74: 56, 75: 40, 76: 31, 77: 50, 78: 40, 79: 46, 80: 42,
+        81: 29, 82: 19, 83: 36, 84: 25, 85: 22, 86: 17, 87: 19, 88: 26, 89: 30, 90: 20,
+        91: 15, 92: 21, 93: 11, 94: 8, 95: 8, 96: 19, 97: 5, 98: 8, 99: 8, 100: 11,
+        101: 11, 102: 8, 103: 3, 104: 9, 105: 5, 106: 4, 107: 7, 108: 3, 109: 6, 110: 4,
+        111: 5, 112: 4, 113: 5, 114: 6,
+    }
+
+    def _surah_ayat_count(self, surah_num):
+        return self.SURAH_AYAT.get(surah_num, 0)
+
+    def _on_surah_changed(self, tid, surah_var, ayat_cb):
+        try:
+            surah = int(surah_var.get() or 1)
+        except Exception:
+            surah = 1
+        count = self._surah_ayat_count(surah)
+        ayat_cb['values'] = [str(i) for i in range(1, count + 1)] if count else []
+        # reset ayat if out of range
+        try:
+            cur_val = ayat_cb.get()
+            if cur_val.isdigit() and int(cur_val) > count:
+                ayat_cb.set('')
+        except Exception:
+            pass
+        self._save_surah(tid, str(surah))
+
+    def _save_ayat(self, tid, val):
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    t['ayat'] = val
+        save(data)
 
     def _set_priority(self, tid, label):
         data = load()
