@@ -339,3 +339,4 @@ class PomodoroController:
     def on_close(self):
         for tid in list(self.timers.keys()):
             self._kill_timer(tid)
+        self.master.destroy()
