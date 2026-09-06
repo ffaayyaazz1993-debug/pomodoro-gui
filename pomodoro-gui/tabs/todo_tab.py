@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 from pomodoro_common import (
     Q1, Q2, Q3, Q4, PQ_LABEL, load, save, get_current_project, all_todos,
     fire_sound, toast, TimerRunner,
@@ -40,6 +40,8 @@ class TodoTab(ttk.Frame):
         ttk.Label(top, text='Task:').pack(side='left', padx=(8, 0))
         self.todo_input_field = ttk.Entry(top)
         self.todo_input_field.pack(side='left', fill='x', expand=True, padx=4)
+        ttk.Button(top, text='+ Add', command=self._todo_add,
+                    style='Primary.TButton').pack(side='left', padx=(4, 8))
         ttk.Label(top, text='Q:').pack(side='left', padx=(4, 0))
         self.todo_q = ttk.Combobox(top, values=[1, 2, 3, 4], width=3, state='readonly')
         self.todo_q.pack(side='left', padx=2)
@@ -51,9 +53,16 @@ class TodoTab(ttk.Frame):
         self.todo_cat.bind('<<ComboboxSelected>>', lambda e: self.refresh())
         ttk.Button(top, text='+ Cat', style='Card.TButton',
                     command=self._add_category).pack(side='left', padx=2)
-        ttk.Button(top, text='+ Add', command=self._todo_add,
-                    style='Primary.TButton').pack(side='left', padx=(4, 8))
-        ttk.Separator(self).pack(fill='x')
+        ttk.Button(top, text='- Cat', style='Danger.TButton',
+                    command=self._delete_category).pack(side='left', padx=2)
+        ttk.Label(top, text='Tag:').pack(side='left', padx=(8, 0))
+        self.todo_tag = ttk.Combobox(top, width=10)
+        self.todo_tag.pack(side='left', padx=2)
+        self.todo_tag.set('')
+        self.todo_tag.bind('<<ComboboxSelected>>', self._on_tag_selected)
+        self.todo_tag.bind('<KeyRelease>', lambda e: self._on_tag_selected(e))
+        ttk.Button(top, text='Tags', style='Card.TButton',
+                    command=self._open_tag_manager).pack(side='left', padx=2)
 
         # scrollable task cards
         self.tasks_canvas = tk.Canvas(self, borderwidth=0, highlightthickness=0, bg='#ffffff')
@@ -85,6 +94,36 @@ class TodoTab(ttk.Frame):
         else: incr = -1 if event.delta > 0 else 1
         self.tasks_canvas.yview_scroll(incr, 'units')
 
+    def _on_tag_selected(self, event=None):
+        """Tag selected — field inputs will render in the task card below the subtask bar."""
+        pass
+
+    def _todo_add(self):
+        desc = self.todo_input_field.get().strip()
+        if not desc:
+            messagebox.showwarning('Add todo', 'Enter a task description.')
+            return
+        q = int(self.todo_q.get())
+        cat = self.todo_cat.get().strip()
+        tag = self.todo_tag.get().strip()
+        data = load()
+        project = get_current_project(data)
+        todo = {'id': str(uuid.uuid4())[:8], 'desc': desc,
+                'created': time.strftime('%Y-%m-%dT%H:%M:%S'),
+                'done': False, 'priority': q, 'pomodoros': 0,
+                'last_done': '', 'notes': '', 'category': cat}
+        if tag:
+            todo['tag'] = tag
+            # pre-fill tag_data with empty strings for each field defined on the tag
+            tags_def = data.get('tags', {})
+            if tag in tags_def and tags_def[tag]:
+                todo['tag_data'] = {f['name']: '' for f in tags_def[tag]}
+            else:
+                todo['tag_data'] = {}
+        project['todos'].append(todo)
+        save(data)
+        self.todo_input_field.delete(0, 'end')
+        self.refresh()
     def _refresh_projects(self):
         names, current_name = self.controller.refresh_projects()
         self.project_cb['values'] = names
@@ -131,42 +170,160 @@ class TodoTab(ttk.Frame):
     def _add_category(self):
         dialog = tk.Toplevel(self)
         dialog.title('New Folder')
-        dialog.geometry('300x120')
+        dialog.geometry('300x180')
         dialog.transient(self)
         dialog.grab_set()
         ttk.Label(dialog, text='Folder name:').pack(padx=10, pady=(10, 4))
         name_var = tk.StringVar()
         entry = ttk.Entry(dialog, textvariable=name_var, width=30)
         entry.pack(padx=10); entry.focus()
+        ttk.Label(dialog, text='Tag (optional):').pack(padx=10, pady=(8, 4))
+        tag_var = tk.StringVar()
+        data = load()
+        tags = data.get('tags', {})
+        tag_names = sorted(tags.keys())
+        tag_combo = ttk.Combobox(dialog, textvariable=tag_var, values=tag_names, width=28)
+        tag_combo.pack(padx=10)
         def do():
             name = name_var.get().strip()
             if name:
-                vals = list(self.todo_cat['values']) if self.todo_cat['values'] else []
-                if name not in vals:
-                    vals.append(name)
-                    self.todo_cat['values'] = sorted(vals)
+                data = load()
+                cats = data.get('categories', [])
+                cat_tags = data.get('category_tags', {})
+                if name not in cats:
+                    cats.append(name)
+                    data['categories'] = sorted(cats)
+                selected_tag = tag_var.get().strip()
+                if selected_tag:
+                    cat_tags[name] = selected_tag
+                    data['category_tags'] = cat_tags
+                save(data)
+                self.todo_cat['values'] = [''] + data['categories']
                 self.todo_cat.set(name)
                 dialog.destroy()
         entry.bind('<Return>', lambda e: do())
         ttk.Button(dialog, text='Create', command=do).pack(pady=10)
 
-    def _todo_add(self):
-        desc = self.todo_input_field.get().strip()
-        if not desc:
-            messagebox.showwarning('Add todo', 'Enter a task description.')
-            return
-        q = int(self.todo_q.get())
+    def _delete_category(self):
         cat = self.todo_cat.get().strip()
+        if not cat:
+            messagebox.showwarning('Delete Folder', 'Select a folder to delete.')
+            return
+        if not messagebox.askyesno('Delete Folder', 'Delete folder "%s"? Tasks in it will become uncategorized.' % cat):
+            return
         data = load()
-        project = get_current_project(data)
-        todo = {'id': str(uuid.uuid4())[:8], 'desc': desc,
-                'created': time.strftime('%Y-%m-%dT%H:%M:%S'),
-                'done': False, 'priority': q, 'pomodoros': 0,
-                'last_done': '', 'notes': '', 'category': cat}
-        project['todos'].append(todo)
+        cats = data.get('categories', [])
+        if cat in cats:
+            cats.remove(cat)
+            data['categories'] = sorted(cats)
+        # remove from category_tags
+        cat_tags = data.get('category_tags', {})
+        cat_tags.pop(cat, None)
+        data['category_tags'] = cat_tags
         save(data)
-        self.todo_input_field.delete(0, 'end')
+        self.todo_cat['values'] = [''] + data['categories']
+        self.todo_cat.set('')
         self.refresh()
+
+    def _open_tag_manager(self):
+        """Tag manager: define tags with custom fields. Category matching a tag name renders those fields."""
+        dialog = tk.Toplevel(self)
+        dialog.title('Tag Manager')
+        dialog.geometry('420x350')
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # existing tags list
+        list_frame = ttk.LabelFrame(dialog, text='Tags', padding=6)
+        list_frame.pack(fill='both', expand=True, padx=10, pady=(10, 4))
+
+        tag_listbox = tk.Listbox(list_frame, height=5)
+        tag_listbox.pack(side='left', fill='both', expand=True)
+
+        def refresh_tag_list():
+            data = load()
+            tags = data.get('tags', {})
+            tag_listbox.delete(0, 'end')
+            for name in sorted(tags.keys()):
+                fields = tags[name]
+                field_str = ', '.join(f['name'] for f in fields)
+                tag_listbox.insert('end', '%s  [%s]' % (name, field_str))
+
+        refresh_tag_list()
+
+        # field editor
+        field_frame = ttk.LabelFrame(dialog, text='Tag Editor', padding=6)
+        field_frame.pack(fill='x', padx=10, pady=4)
+
+        ttk.Label(field_frame, text='Tag name:').grid(row=0, column=0, sticky='w')
+        tag_name_var = tk.StringVar()
+        name_entry = ttk.Entry(field_frame, textvariable=tag_name_var, width=20)
+        name_entry.grid(row=0, column=1, padx=4)
+
+        ttk.Label(field_frame, text='Field name:').grid(row=1, column=0, sticky='w')
+        field_name_var = tk.StringVar()
+        field_name_entry = ttk.Entry(field_frame, textvariable=field_name_var, width=20)
+        field_name_entry.grid(row=1, column=1, padx=4)
+
+        ttk.Label(field_frame, text='Type:').grid(row=1, column=2, sticky='w')
+        field_type_var = tk.StringVar(value='text')
+        ttk.Combobox(field_frame, textvariable=field_type_var,
+                     values=['text', 'number'], width=8,
+                     state='readonly').grid(row=1, column=3, padx=4)
+
+        def add_tag():
+            tag = tag_name_var.get().strip()
+            if not tag:
+                return
+            data = load()
+            tags = data.setdefault('tags', {})
+            if tag not in tags:
+                tags[tag] = []
+                data['tags'] = tags
+                save(data)
+            refresh_tag_list()
+
+        ttk.Button(field_frame, text='+ Tag', command=add_tag).grid(row=0, column=2, padx=4)
+
+        def add_field():
+            tag = tag_name_var.get().strip()
+            fname = field_name_var.get().strip()
+            if not tag or not fname:
+                return
+            data = load()
+            tags = data.setdefault('tags', {})
+            if tag not in tags:
+                tags[tag] = []
+            tag_fields = tags[tag]
+            if not any(f['name'] == fname for f in tag_fields):
+                tag_fields.append({'name': fname, 'type': field_type_var.get()})
+                tags[tag] = tag_fields
+                save(data)
+            field_name_var.set('')
+            refresh_tag_list()
+
+        ttk.Button(field_frame, text='+ Field', command=add_field).grid(row=1, column=4, padx=4)
+
+        def delete_tag():
+            sel = tag_listbox.curselection()
+            if not sel:
+                return
+            idx = sel[0]
+            data = load()
+            tags = data.get('tags', {})
+            # find tag name from display text
+            display = tag_listbox.get(idx)
+            tag_name = display.split('  [')[0].strip()
+            if tag_name in tags:
+                del tags[tag_name]
+                data['tags'] = tags
+                save(data)
+            refresh_tag_list()
+
+        btn_row = ttk.Frame(dialog)
+        btn_row.pack(fill='x', padx=10, pady=4)
+        ttk.Button(btn_row, text='Delete Tag', command=delete_tag).pack(side='left')
+        ttk.Button(btn_row, text='Close', command=dialog.destroy).pack(side='right')
 
     def refresh(self):
         for child in self.tasks_inner.winfo_children():
@@ -222,8 +379,14 @@ class TodoTab(ttk.Frame):
             for t in cat_todos:
                 self._build_task_card(t, cat_inner)
 
-        cats_list = sorted(set(t.get('category', '').strip() for t in todos if t.get('category', '').strip()))
+        data = load()
+        persisted = set(data.get('categories', []))
+        from_todos = set(t.get('category', '').strip() for t in todos if t.get('category', '').strip())
+        cats_list = sorted(persisted | from_todos)
         self.todo_cat['values'] = [''] + cats_list
+
+        tags_list = sorted(data.get('tags', {}).keys())
+        self.todo_tag['values'] = [''] + tags_list
 
         cnt = len([t for t in todos if not t.get('done')])
         self.todo_count.config(text='%d open / %d total' % (cnt, len(todos)))
@@ -259,10 +422,16 @@ class TodoTab(ttk.Frame):
                    foreground='grey').pack(side='left', padx=4)
         ttk.Label(info, text='Pomos: %d' % pomo,
                    foreground='#059669', font=('SF Pro Text', 8, 'bold')).pack(side='left', padx=(8, 4))
-        ttk.Button(info, text='\u2713', style='Accent.TButton',
-                    command=lambda: self._todo_done(tid)).pack(side='right', padx=2)
-        ttk.Button(info, text='\u2715', style='Danger.TButton',
-                    command=lambda: self._todo_remove(tid)).pack(side='right', padx=2)
+        cat = todo.get('category', '').strip() or 'No Category'
+        tag = todo.get('tag', '').strip() or 'No Tag'
+        ttk.Label(info, text='Cat: %s | Tag: %s' % (cat, tag),
+                   foreground='#007aff', font=('SF Pro Text', 8)).pack(side='left', padx=(8, 4))
+        ttk.Button(info, text='✎ Edit', style='Card.TButton',
+                   command=lambda: self._edit_cat_tag(tid)).pack(side='left', padx=2)
+        ttk.Button(info, text='✓', style='Accent.TButton',
+                   command=lambda: self._todo_done(tid)).pack(side='right', padx=2)
+        ttk.Button(info, text='✗', style='Danger.TButton',
+                   command=lambda: self._todo_remove(tid)).pack(side='right', padx=2)
 
         timer_row = ttk.Frame(card)
         timer_row.pack(fill='x', pady=(2, 0))
@@ -299,6 +468,9 @@ class TodoTab(ttk.Frame):
         ttk.Button(sub_frame, text='+ Sub', style='Card.TButton',
                     command=lambda: self._add_subtask(tid, sub_var)).pack(side='left')
 
+        # time period row — start/end time + day + date
+        self._build_time_period(card, tid, todo)
+
         subs = todo.get('subtasks', [])
         if subs:
             subs_frame = ttk.Frame(card)
@@ -308,6 +480,11 @@ class TodoTab(ttk.Frame):
 
         if self._detect_quran_related(todo):
             self._build_quran_meta(card, tid, todo)
+
+        if self._detect_hadith_related(todo):
+            self._build_hadith_meta(card, tid, todo)
+
+        self._build_tag_fields(card, tid, todo)
 
         extra = todo.get('extra_input', {})
         if extra.get('type') or extra.get('value') or extra.get('options'):
@@ -569,6 +746,228 @@ class TodoTab(ttk.Frame):
                     t['surah'] = val
         save(data)
 
+    def _detect_hadith_related(self, todo):
+        cat = (todo.get('category') or '').strip().lower()
+        if cat in ('hadith', 'hadith study', 'hadith review', 'sunnah'):
+            return True
+        text = (todo.get('desc') or '').lower()
+        keywords = ('hadith', 'hadiths', 'sunnah', 'sahih', 'bukhari', 'muslim',
+                    'tirmidhi', 'abudawud', 'nasai', 'ibnmajah', 'malik', 'muwatta',
+                    'tirmizi', 'darimi', 'ahmad', 'shaikh', 'muhaddith', 'isnad',
+                    'matn', 'sanad', 'kitab', 'bab', 'hadith no')
+        return any(kw in text for kw in keywords)
+
+    def _build_hadith_meta(self, card, tid, todo):
+        """Hadith reference: book name, volume, kitab, hadith number."""
+        frame = ttk.LabelFrame(card,
+                                text='Hadith Reference',
+                                padding=6,
+                                style='Card.TLabelframe')
+        frame.pack(fill='x', pady=(4, 0))
+
+        # Row 1: Book Name
+        row1 = ttk.Frame(frame)
+        row1.pack(fill='x', pady=2)
+        ttk.Label(row1, text='Book:', width=8).pack(side='left')
+        book_var = tk.StringVar(value=str(todo.get('hadith_book', '') or ''))
+        book_entry = ttk.Entry(row1, textvariable=book_var, width=30)
+        book_entry.pack(side='left', padx=(0, 8))
+
+        # Row 2: Volume, Kitab No, Hadith No
+        row2 = ttk.Frame(frame)
+        row2.pack(fill='x', pady=2)
+
+        ttk.Label(row2, text='Vol:', width=4).pack(side='left')
+        vol_var = tk.StringVar(value=str(todo.get('hadith_vol', '') or ''))
+        vol_entry = ttk.Entry(row2, textvariable=vol_var, width=6)
+        vol_entry.pack(side='left', padx=(0, 6))
+
+        ttk.Label(row2, text='Kitab:', width=5).pack(side='left')
+        kitab_var = tk.StringVar(value=str(todo.get('hadith_kitab', '') or ''))
+        kitab_entry = ttk.Entry(row2, textvariable=kitab_var, width=20)
+        kitab_entry.pack(side='left', padx=(0, 6))
+
+        ttk.Label(row2, text='Hadith No:', width=8).pack(side='left')
+        no_var = tk.StringVar(value=str(todo.get('hadith_no', '') or ''))
+        no_entry = ttk.Entry(row2, textvariable=no_var, width=6)
+        no_entry.pack(side='left')
+
+        # Save on FocusOut / Return
+        def save_field(*args):
+            self._save_hadith_field(tid, {
+                'hadith_book': book_var.get().strip(),
+                'hadith_vol': vol_var.get().strip(),
+                'hadith_kitab': kitab_var.get().strip(),
+                'hadith_no': no_var.get().strip(),
+            })
+
+        for e in (book_entry, vol_entry, kitab_entry, no_entry):
+            e.bind('<FocusOut>', save_field)
+            e.bind('<Return>', save_field)
+
+        card.value['hadith_book_var'] = book_var
+        card.value['hadith_vol_var'] = vol_var
+        card.value['hadith_kitab_var'] = kitab_var
+        card.value['hadith_no_var'] = no_var
+
+    def _save_hadith_field(self, tid, fields):
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    for k, v in fields.items():
+                        if v:
+                            t[k] = v
+                        elif k in t:
+                            t.pop(k, None)
+                    save(data)
+                    return
+
+    def _build_tag_fields(self, card, tid, todo):
+        """Render tag field inputs below the subtask bar, inside the task card."""
+        data = load()
+        tags = data.get('tags', {})
+        cat_tags = data.get('category_tags', {})
+        cat = (todo.get('category') or '').strip()
+        cat_lower = cat.lower()
+        task_tag = (todo.get('tag') or '').strip()
+
+        # find tag: task tag > category name match > category_tags map
+        matched_tag = None
+        if task_tag:
+            for tag_name, fields in tags.items():
+                if tag_name.lower() == task_tag.lower():
+                    matched_tag = (tag_name, fields)
+                    break
+        if not matched_tag:
+            for tag_name, fields in tags.items():
+                if tag_name.lower() == cat_lower:
+                    matched_tag = (tag_name, fields)
+                    break
+        if not matched_tag and cat in cat_tags:
+            target_tag = cat_tags[cat]
+            for tag_name, fields in tags.items():
+                if tag_name.lower() == target_tag.lower():
+                    matched_tag = (tag_name, fields)
+                    break
+        if not matched_tag:
+            return
+
+        tag_name, fields = matched_tag
+        if not fields:
+            return
+
+        tag_data = todo.get('tag_data', {})
+
+        for i, field in enumerate(fields):
+            fname = field['name']
+            row = ttk.Frame(card)
+            row.pack(fill='x', pady=(2, 0))
+
+            ttk.Label(row, text=fname + ':', width=9).pack(side='left')
+            var = tk.StringVar(value=str(tag_data.get(fname, '') or ''))
+            entry = ttk.Entry(row)
+            entry.pack(side='left', fill='x', expand=True, padx=(2, 8))
+
+            def save_field(*args, t=tid, fn=fname, v=var):
+                self._save_tag_field(t, fn, v.get().strip())
+
+            entry.bind('<FocusOut>', save_field)
+            entry.bind('<Return>', save_field)
+
+        card.value['tag_data'] = tag_data
+
+    def _save_tag_field(self, tid, field_name, value):
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    tag_data = t.setdefault('tag_data', {})
+                    if value:
+                        tag_data[field_name] = value
+                    else:
+                        tag_data.pop(field_name, None)
+                        if not tag_data:
+                            t.pop('tag_data', None)
+                    save(data)
+                    return
+
+    def _build_time_period(self, card, tid, todo):
+        """Render start/end time + day + date row inside the task card."""
+        import datetime as dt
+        period = todo.get('time_period', {})
+
+        row = ttk.Frame(card)
+        row.pack(fill='x', pady=(2, 0))
+
+        ttk.Label(row, text='Start:', font=('SF Pro Text', 8)).pack(side='left', padx=(0, 2))
+        start_var = tk.StringVar(value=period.get('start', ''))
+        start_entry = ttk.Entry(row, textvariable=start_var, width=6, font=('SF Pro Text', 8))
+        start_entry.pack(side='left', padx=(0, 6))
+
+        ttk.Label(row, text='End:', font=('SF Pro Text', 8)).pack(side='left', padx=(0, 2))
+        end_var = tk.StringVar(value=period.get('end', ''))
+        end_entry = ttk.Entry(row, textvariable=end_var, width=6, font=('SF Pro Text', 8))
+        end_entry.pack(side='left', padx=(0, 6))
+
+        ttk.Label(row, text='Day:', font=('SF Pro Text', 8)).pack(side='left', padx=(0, 2))
+        day_var = tk.StringVar(value=period.get('day', ''))
+        day_combo = ttk.Combobox(row, textvariable=day_var,
+                                 values=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                                 width=5, state='readonly', font=('SF Pro Text', 8))
+        day_combo.pack(side='left', padx=(0, 6))
+
+        ttk.Label(row, text='Date:', font=('SF Pro Text', 8)).pack(side='left', padx=(0, 2))
+        date_var = tk.StringVar(value=period.get('date', ''))
+        date_entry = ttk.Entry(row, textvariable=date_var, width=11, font=('SF Pro Text', 8))
+        date_entry.pack(side='left', padx=(0, 2))
+
+        def save_period(*args):
+            self._save_time_period(tid, {
+                'start': start_var.get().strip(),
+                'end': end_var.get().strip(),
+                'day': day_var.get().strip(),
+                'date': date_var.get().strip(),
+            })
+
+        start_entry.bind('<FocusOut>', save_period)
+        start_entry.bind('<Return>', save_period)
+        end_entry.bind('<FocusOut>', save_period)
+        end_entry.bind('<Return>', save_period)
+        day_combo.bind('<<ComboboxSelected>>', save_period)
+        date_entry.bind('<FocusOut>', save_period)
+        date_entry.bind('<Return>', save_period)
+
+        # Auto-fill day from date when date changes
+        def on_date_change(*args):
+            d = date_var.get().strip()
+            if len(d) == 10 and d[4] == '-' and d[7] == '-':
+                try:
+                    y, m, day_num = int(d[:4]), int(d[5:7]), int(d[8:10])
+                    day_name = dt.date(y, m, day_num).strftime('%a')
+                    day_var.set(day_name)
+                except Exception:
+                    pass
+            save_period()
+
+        date_entry.bind('<FocusOut>', on_date_change)
+        date_entry.bind('<Return>', on_date_change)
+
+    def _save_time_period(self, tid, period):
+        """Save time_period dict to a task."""
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    # remove empty values
+                    cleaned = {k: v for k, v in period.items() if v}
+                    if cleaned:
+                        t['time_period'] = cleaned
+                    else:
+                        t.pop('time_period', None)
+                    save(data)
+                    return
+
     def _detect_quran_related(self, todo):
         cat = (todo.get('category') or '').strip().lower()
         if cat == 'quran':
@@ -700,6 +1099,131 @@ class TodoTab(ttk.Frame):
                     save(data)
                     self.refresh()
                     return
+
+
+    def _edit_cat_tag(self, tid):
+        """Edit Category / Tag / Time Period dialog for any task."""
+        dialog = tk.Toplevel(self)
+        dialog.title('Edit Task')
+        dialog.geometry('320x400')
+        dialog.transient(self)
+        dialog.grab_set()
+
+        todo = None
+        data = load()
+        for p in data['projects']:
+            for t in p.get('todos', []):
+                if t['id'] == tid:
+                    todo = t
+                    break
+            if todo:
+                break
+        if not todo:
+            return
+
+        cur_cat = todo.get('category', '') or ''
+        cur_tag = todo.get('tag', '') or ''
+        period = todo.get('time_period', {})
+
+        # Category
+        ttk.Label(dialog, text='Category:').pack(padx=10, pady=(12, 2), anchor='w')
+        cat_var = tk.StringVar(value=cur_cat)
+        cat_frame = ttk.Frame(dialog)
+        cat_frame.pack(fill='x', padx=10)
+        cat_entry = ttk.Entry(cat_frame, textvariable=cat_var, width=30)
+        cat_entry.pack(side='left', fill='x', expand=True)
+        cat_btn = ttk.Button(cat_frame, text='+ Cat', style='Card.TButton',
+                              command=lambda: self._quick_add_category(cat_var, cat_entry, cat_cb))
+        cat_btn.pack(side='right', padx=(4, 0))
+        all_cats = data.get('categories', [])
+        cat_cb = ttk.Combobox(dialog, textvariable=cat_var, values=[''] + sorted(all_cats), width=30, state='readonly')
+        cat_cb.pack(fill='x', padx=10)
+        cat_cb.set(cur_cat)
+
+        # Tag
+        ttk.Label(dialog, text='Tag:').pack(padx=10, pady=(8, 2), anchor='w')
+        tag_var = tk.StringVar(value=cur_tag)
+        tag_frame = ttk.Frame(dialog)
+        tag_frame.pack(fill='x', padx=10)
+        tag_entry = ttk.Entry(tag_frame, textvariable=tag_var, width=30)
+        tag_entry.pack(side='left', fill='x', expand=True)
+        tag_btn = ttk.Button(tag_frame, text='TAGS', style='Card.TButton',
+                              command=lambda: self._open_tag_manager())
+        tag_btn.pack(side='right', padx=4)
+        all_tags = sorted(data.get('tags', {}).keys())
+        tag_cb = ttk.Combobox(dialog, textvariable=tag_var, width=30, state='readonly')
+        tag_cb['values'] = [''] + all_tags
+        tag_cb.pack(fill='x', padx=10)
+        tag_cb.set(cur_tag)
+
+        # Time Period
+        ttk.Label(dialog, text='Time Period:').pack(padx=10, pady=(12, 2), anchor='w')
+        period_frame = ttk.Frame(dialog)
+        period_frame.pack(fill='x', padx=10)
+
+        ttk.Label(period_frame, text='Start:').pack(side='left')
+        start_var = tk.StringVar(value=period.get('start', ''))
+        start_entry = ttk.Entry(period_frame, textvariable=start_var, width=6)
+        start_entry.pack(side='left', padx=(2, 8))
+
+        ttk.Label(period_frame, text='End:').pack(side='left')
+        end_var = tk.StringVar(value=period.get('end', ''))
+        end_entry = ttk.Entry(period_frame, textvariable=end_var, width=6)
+        end_entry.pack(side='left', padx=(2, 8))
+
+        day_frame = ttk.Frame(dialog)
+        day_frame.pack(fill='x', padx=10, pady=(4, 0))
+        ttk.Label(day_frame, text='Day:').pack(side='left')
+        day_var = tk.StringVar(value=period.get('day', ''))
+        day_combo = ttk.Combobox(day_frame, textvariable=day_var,
+                                 values=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                                 width=5, state='readonly')
+        day_combo.pack(side='left', padx=(2, 8))
+
+        ttk.Label(day_frame, text='Date:').pack(side='left')
+        date_var = tk.StringVar(value=period.get('date', ''))
+        date_entry = ttk.Entry(day_frame, textvariable=date_var, width=11)
+        date_entry.pack(side='left', padx=(2, 0))
+
+        def do():
+            cat = cat_var.get().strip()
+            tag = tag_var.get().strip()
+            todo['category'] = cat
+            if tag:
+                todo['tag'] = tag
+            elif 'tag' in todo:
+                del todo['tag']
+            # save time period
+            cleaned = {
+                'start': start_var.get().strip(),
+                'end': end_var.get().strip(),
+                'day': day_var.get().strip(),
+                'date': date_var.get().strip(),
+            }
+            cleaned = {k: v for k, v in cleaned.items() if v}
+            if cleaned:
+                todo['time_period'] = cleaned
+            elif 'time_period' in todo:
+                del todo['time_period']
+            save(data)
+            dialog.destroy()
+            self.refresh()
+
+        ttk.Button(dialog, text='Save', command=do).pack(pady=18)
+
+    def _quick_add_category(self, var, entry, combo):
+        """Prompt to create a new category without leaving the edit dialog."""
+        name = simpledialog.askstring('New Category', 'Category name:')
+        if name and name.strip():
+            data = load()
+            cats = data.get('categories', [])
+            if name.strip() not in cats:
+                cats.append(name.strip())
+                data['categories'] = sorted(cats)
+                save(data)
+            var.set(name.strip())
+            combo['values'] = [''] + sorted(cats)
+            combo.set(name.strip())
 
     def _panel_start_any(self, task_id):
         if task_id in self.controller.timers and not self.controller.timers[task_id]['runner'].done:
