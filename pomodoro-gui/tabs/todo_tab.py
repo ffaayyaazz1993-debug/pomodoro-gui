@@ -306,7 +306,8 @@ class TodoTab(ttk.Frame):
             for sub in subs:
                 self._build_subtask_row(tid, sub, subs_frame)
 
-        self._build_quran_meta(card, tid, todo)
+        if todo.get('category', '').strip().lower() == 'quran':
+            self._build_quran_meta(card, tid, todo)
 
         extra = todo.get('extra_input', {})
         if extra.get('type') or extra.get('value') or extra.get('options'):
@@ -521,23 +522,21 @@ class TodoTab(ttk.Frame):
                     return
 
     def _build_quran_meta(self, card, tid, todo):
-        """Surah + Ayat + Notes grouped as a Quran metadata section in the task card."""
-        surah_frame = ttk.Frame(card)
-        surah_frame.pack(fill='x', pady=(2, 0))
-        ttk.Label(surah_frame, text='Surah:').pack(side='left', padx=(0, 4))
+        """Surah + Ayat side-by-side, then notes below — grouped as a Quran metadata section."""
+        # surah + ayat in one row
+        sa_frame = ttk.Frame(card)
+        sa_frame.pack(fill='x', pady=(2, 0))
+        ttk.Label(sa_frame, text='Surah:').pack(side='left', padx=(0, 4))
         surah_var = tk.StringVar(value=str(todo.get('surah', '')))
-        surah_cb = ttk.Combobox(surah_frame, textvariable=surah_var,
+        surah_cb = ttk.Combobox(sa_frame, textvariable=surah_var,
                                  values=[str(i) for i in range(1, 115)],
-                                 width=5, state='readonly')
+                                 width=4, state='readonly')
         surah_cb.pack(side='left', padx=2)
-
-        ayat_frame = ttk.Frame(card)
-        ayat_frame.pack(fill='x', pady=(2, 0))
-        ttk.Label(ayat_frame, text='Ayat:').pack(side='left', padx=(0, 4))
+        ttk.Label(sa_frame, text='Ayat:').pack(side='left', padx=(8, 4))
         ayat_var = tk.StringVar(value=str(todo.get('ayat', '')))
-        ayat_cb = ttk.Combobox(ayat_frame, textvariable=ayat_var,
+        ayat_cb = ttk.Combobox(sa_frame, textvariable=ayat_var,
                                 values=[str(i) for i in range(1, self._surah_ayat_count(int(surah_var.get() or 1)) + 1)],
-                                width=5, state='readonly')
+                                width=4, state='readonly')
         ayat_cb.pack(side='left', padx=2)
 
         # both widgets exist now — bind after
@@ -550,6 +549,7 @@ class TodoTab(ttk.Frame):
         card.value['ayat_var'] = ayat_var
         card.value['ayat_cb'] = ayat_cb
 
+        # notes box below
         notes_frame = ttk.Frame(card)
         notes_frame.pack(fill='x', pady=(2, 0))
         notes_text = tk.Text(notes_frame, height=2, width=40,
