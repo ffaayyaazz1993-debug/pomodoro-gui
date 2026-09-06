@@ -1,0 +1,99 @@
+{
+  "projects": [
+    {
+      "id": "default",
+      "name": "Default Project",
+      "todos": [
+        {
+          "id": "c700919f",
+          "desc": "abc",
+          "created": "2026-09-05T10:01:23",
+          "done": false,
+          "priority": 2,
+          "pomodoros": 0,
+          "last_done": "",
+          "notes": "",
+          "subtasks": []
+        }
+      ],
+      "schedules": [
+        {
+          "id": "b7ef59e4",
+          "spec": "Every 15 min",
+          "minutes": 1,
+          "label": "tafsir01 RAG reminder",
+          "taskname": "HermesPomodoro_b7ef59e4",
+          "created": "2026-09-04T11:06:26.118137"
+        }
+      ]
+    },
+    {
+      "id": "abe48936",
+      "name": "market research and analysis program",
+      "todos": [
+        {
+          "id": "0199d42c",
+          "desc": "abc",
+          "created": "2026-09-05T14:57:17",
+          "done": false,
+          "priority": 2,
+          "pomodoros": 0,
+          "last_done": "",
+          "notes": "",
+          "category": "Abc"
+        },
+        {
+          "id": "02bbe96b",
+          "desc": "bcd",
+          "created": "2026-09-05T14:57:36",
+          "done": false,
+          "priority": 2,
+          "pomodoros": 0,
+          "last_done": "",
+          "notes": "",
+          "category": "Abc"
+        },
+        {
+          "id": "fa9a4fe3",
+          "desc": "bcd12",
+          "created": "2026-09-05T14:58:06",
+          "done": false,
+          "priority": 2,
+          "pomodoros": 0,
+          "last_done": "",
+          "notes": "",
+          "category": "Bcd"
+        }
+      ],
+      "schedules": []
+    },
+    {
+      "id": "1f66b41c",
+      "name": "Islam studies",
+      "todos": [
+        {
+          "id": "25f0e595",
+          "desc": "Quran translation",
+          "created": "2026-09-05T18:08:07",
+          "done": false,
+          "priority": 2,
+          "pomodoros": 0,
+          "last_done": "",
+          "notes": "",
+          "category": "Quran"
+        }
+      ],
+      "schedules": []
+    }
+  ],
+  "current_project": "1f66b41c",
+  "mindmaps": [
+    {
+      "id": "886fde16",
+      "name": "abc",
+      "nodes": [],
+      "edges": []
+    }
+  ],
+  "current_mindmap": "886fde16"
+}

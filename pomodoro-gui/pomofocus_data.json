@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "focus": 2,
+    "short": 1,
+    "long": 1,
+    "rounds": 1,
+    "sound": "SystemExclamation",
+    "bgsound": null,
+    "auto_start_next": true
+  },
+  "tasks": [
+    {
+      "id": "5b37f64f",
+      "desc": "Read Chapter 3",
+      "estimate": 4,
+      "completed_pomodoros": 0,
+      "created": "2026-09-04T09:45:13.288260",
+      "done": false,
+      "done_at": null
+    },
+    {
+      "id": "52075212",
+      "desc": "Write summary",
+      "estimate": 2,
+      "completed_pomodoros": 0,
+      "created": "2026-09-04T09:45:13.848354",
+      "done": false,
+      "done_at": null
+    }
+  ],
+  "templates": {},
+  "completed": []
+}
